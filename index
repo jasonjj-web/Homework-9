@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學術論文中文翻譯與重點整理工具</title>
+    <!-- Tailwind CSS CDN for modern utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <!-- Marked.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- KaTeX CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+
+    <style>
+        /* === [SECTION 0: CSS & THEME VARIABLES] === */
+        :root {
+            --bg-main: #121212;
+            --bg-card: #1E1E1E;
+            --border-color: #2E2E2E;
+            --text-primary: #E4E4E7;
+            --text-secondary: #A1A1AA;
+            --accent-color: #3B82F6;
+            --accent-hover: #2563EB;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* Custom scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-main);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3F3F46;
+        }
+
+        .custom-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: var(--accent-color);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Top Navigation & Control Bar -->
+    <header class="border-b border-[#2E2E2E] bg-[#1E1E1E] sticky top-0 z-50 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            <!-- App Branding & View Switcher -->
+            <div class="flex items-center gap-6 w-full md:w-auto justify-between md:justify-start">
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-600 p-2 rounded-lg text-white font-bold">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold tracking-wide">AI 學術論文閱讀器</h1>
+                        <p class="text-xs text-[#A1A1AA]">Zero-Build Single File Reader & Translator</p>
+                    </div>
+                </div>
+
+                <!-- View Switcher Tabs -->
+                <nav class="flex gap-1 bg-[#121212] p-1 rounded-lg border border-[#2E2E2E]">
+                    <button onclick="switchView('view-translator')" id="nav-translator" class="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white transition">論文工作區</button>
+                    <!-- Future views can be added here -->
+                </nav>
+            </div>
+
+            <!-- API Key & Model Configuration Panel -->
+            <div class="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+                <div class="flex items-center gap-2 bg-[#121212] px-3 py-1.5 rounded-lg border border-[#2E2E2E]">
+                    <span class="text-xs text-[#A1A1AA]">API Key:</span>
+                    <input type="password" id="apiKeyInput" placeholder="請輸入 Gemini API Key" class="bg-transparent text-xs text-[#E4E4E7] focus:outline-none w-36 sm:w-44">
+                </div>
+                <div class="flex items-center gap-2 bg-[#121212] px-3 py-1.5 rounded-lg border border-[#2E2E2E]">
+                    <span class="text-xs text-[#A1A1AA]">模型:</span>
+                    <select id="modelSelect" class="bg-transparent text-xs text-[#E4E4E7] focus:outline-none cursor-pointer">
+                        <option value="gemini-2.5-flash" class="bg-[#1E1E1E]">gemini-2.5-flash</option>
+                        <option value="gemini-2.5-pro" class="bg-[#1E1E1E]">gemini-2.5-pro</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Views Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
+
+        <!-- VIEW 1: TRANSLATOR WORKSPACE -->
+        <section id="view-translator" class="page-view flex-1 flex flex-col gap-6">
+            
+            <!-- Upload & Progress Control Bar -->
+            <div class="custom-card rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <label id="dropZone" class="flex-1 md:flex-none border-2 border-dashed border-[#3F3F46] hover:border-blue-500 bg-[#121212] px-6 py-3 rounded-lg cursor-pointer flex items-center justify-center gap-3 transition text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span id="uploadLabel" class="text-sm font-medium text-[#E4E4E7]">上傳英文 PDF 論文 (或點擊選擇)</span>
+                        <input type="file" id="pdfFileInput" accept=".pdf" class="hidden">
+                    </label>
+                </div>
+
+                <!-- Status & Progress -->
+                <div class="flex-1 w-full md:w-auto flex flex-col gap-1.5 min-w-[280px]">
+                    <div class="flex justify-between text-xs text-[#A1A1AA]">
+                        <span id="statusText">等待上傳 PDF 檔案...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-[#121212] rounded-full h-2 overflow-hidden border border-[#2E2E2E]">
+                        <div id="progressBar" class="bg-blue-600 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <div>
+                    <button id="startProcessBtn" disabled class="bg-blue-600 hover:bg-blue-700 disabled:bg-[#2E2E2E] disabled:text-[#71717A] text-white px-5 py-2.5 rounded-lg text-sm font-medium transition shadow-sm cursor-pointer disabled:cursor-not-allowed">
+                        開始 AI 導讀與翻譯
+                    </button>
+                </div>
+            </div>
+
+            <!-- Two-Column Workspace Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
+                
+                <!-- LEFT PANEL: Structured Highlights (35% -> lg:col-span-4) -->
+                <div class="custom-card rounded-xl p-5 lg:col-span-4 flex flex-col h-[75vh] sticky top-24">
+                    <div class="flex items-center justify-between pb-3 border-b border-[#2E2E2E] mb-4">
+                        <h2 class="text-sm font-bold flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            五段式結構化重點導讀
+                        </h2>
+                        <button onclick="copyHighlights()" title="複製重點" class="text-xs text-[#A1A1AA] hover:text-white bg-[#121212] hover:bg-[#2E2E2E] px-2.5 py-1 rounded border border-[#2E2E2E] transition cursor-pointer">
+                            複製
+                        </button>
+                    </div>
+                    <div id="highlightsContent" class="flex-1 overflow-y-auto pr-2 text-sm space-y-4 text-[#D4D4D8] leading-relaxed">
+                        <p class="text-xs text-[#71717A] italic text-center py-12">尚未載入論文，請於上方上傳 PDF 並點擊開始導讀。</p>
+                    </div>
+                </div>
+
+                <!-- RIGHT PANEL: Main Reading Area (65% -> lg:col-span-8) -->
+                <div class="custom-card rounded-xl p-5 lg:col-span-8 flex flex-col h-[75vh]">
+                    <div class="flex items-center justify-between pb-3 border-b border-[#2E2E2E] mb-4">
+                        <h2 class="text-sm font-bold flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                            </svg>
+                            全文閱讀區
+                        </h2>
+                        <!-- Reading Mode Toggle Switch -->
+                        <div class="flex bg-[#121212] p-1 rounded-lg border border-[#2E2E2E]">
+                            <button onclick="setReadingMode('bilingual')" id="modeBtnBilingual" class="px-3 py-1 text-xs font-medium rounded-md bg-blue-600 text-white transition cursor-pointer">中英雙語對照</button>
+                            <button onclick="setReadingMode('monolingual')" id="modeBtnMonolingual" class="px-3 py-1 text-xs font-medium rounded-md text-[#A1A1AA] hover:text-white transition cursor-pointer">純繁中閱讀</button>
+                        </div>
+                    </div>
+                    <!-- Translation Queue / Reading Container -->
+                    <div id="translationContainer" class="flex-1 overflow-y-auto pr-2 space-y-6 text-sm text-[#D4D4D8] leading-relaxed">
+                        <div class="text-center py-20 text-[#71717A] italic">
+                            論文翻譯內容將於此處逐段呈現...
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-[#2E2E2E] bg-[#1E1E1E] py-3 text-center text-xs text-[#71717A]">
+        AI Academic Paper Reader & Translator &bull; Built with Zero-Build Single File Architecture
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // === [SECTION 1: STATE & CONFIG] ===
+        const CONFIG_KEYS = {
+            API_KEY: 'paper_translator_api_key',
+            MODEL: 'paper_translator_model'
+        };
+
+        const AppState = {
+            apiKey: localStorage.getItem(CONFIG_KEYS.API_KEY) || '',
+            model: localStorage.getItem(CONFIG_KEYS.MODEL) || 'gemini-2.5-flash',
+            pdfTextChunks: [],
+            highlightsMarkdown: '',
+            translatedSections: [], // array of { original, translated }
+            readingMode: 'bilingual', // 'bilingual' or 'monolingual'
+            isProcessing: false,
+            fileName: ''
+        };
+
+        // Initialize UI inputs from LocalStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const apiKeyInput = document.getElementById('apiKeyInput');
+            const modelSelect = document.getElementById('modelSelect');
+
+            if (AppState.apiKey) apiKeyInput.value = AppState.apiKey;
+            if (AppState.model) modelSelect.value = AppState.model;
+
+            apiKeyInput.addEventListener('input', (e) => {
+                AppState.apiKey = e.target.value.trim();
+                localStorage.setItem(CONFIG_KEYS.API_KEY, AppState.apiKey);
+            });
+
+            modelSelect.addEventListener('change', (e) => {
+                AppState.model = e.target.value;
+                localStorage.setItem(CONFIG_KEYS.MODEL, AppState.model);
+            });
+
+            setupPDFUploader();
+        });
+
+        // View Router
+        function switchView(viewId) {
+            document.querySelectorAll('.page-view').forEach(view => view.classList.add('hidden'));
+            document.getElementById(viewId).classList.remove('hidden');
+            
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.classList.remove('bg-blue-600', 'text-white');
+                btn.classList.add('text-[#A1A1AA]', 'hover:text-white');
+            });
+            const activeBtn = document.getElementById('nav-translator');
+            if (activeBtn) {
+                activeBtn.classList.add('bg-blue-600', 'text-white');
+                activeBtn.classList.remove('text-[#A1A1AA]', 'hover:text-white');
+            }
+        }
+
+
+        // === [SECTION 2: GEMINI API SERVICE] ===
+        async function callGeminiAPI(systemPrompt, userContent, retries = 3, delay = 2000) {
+            if (!AppState.apiKey) {
+                throw new Error("請先在右上角設定您的 Google Gemini API Key。");
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${AppState.model}:generateContent?key=${AppState.apiKey}`;
+            
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: `${systemPrompt}\n\n---\n\n${userContent}` }
+                        ]
+                    }
+                ]
+            };
+
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        if (attempt < retries) {
+                            await new Promise(res => setTimeout(res, delay * attempt));
+                            continue;
+                        }
+                    }
+
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        throw new Error(errData.error?.message || `API 請求失敗 (HTTP ${response.status})`);
+                    }
+
+                    const data = await response.json();
+                    const candidate = data.candidates?.[0];
+                    if (!candidate || !candidate.content?.parts?.[0]?.text) {
+                        throw new Error("Gemini API 回傳格式異常或內容為空。");
+                    }
+
+                    return candidate.content.parts[0].text;
+                } catch (error) {
+                    if (attempt === retries) throw error;
+                    await new Promise(res => setTimeout(res, delay * attempt));
+                }
+            }
+        }
+
+
+        // === [SECTION 3: DOMAIN LOGIC & PARSERS] ===
+        function setupPDFUploader() {
+            const fileInput = document.getElementById('pdfFileInput');
+            const dropZone = document.getElementById('dropZone');
+            const startBtn = document.getElementById('startProcessBtn');
+
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) handleSelectedPDF(file);
+            });
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-blue-500', 'bg-[#18181B]');
+            });
+
+            dropZone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-500', 'bg-[#18181B]');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-500', 'bg-[#18181B]');
+                const file = e.dataTransfer.files[0];
+                if (file && file.type === 'pdf') {
+                    handleSelectedPDF(file);
+                } else {
+                    alert("請上傳有效的 PDF 檔案！");
+                }
+            });
+
+            startBtn.addEventListener('click', () => {
+                if (!AppState.isProcessing && AppState.pdfTextChunks.length > 0) {
+                    runPipeline();
+                }
+            });
+        }
+
+        async function handleSelectedPDF(file) {
+            AppState.fileName = file.name;
+            document.getElementById('uploadLabel').textContent = `已選擇: ${file.name}`;
+            updateStatus("正在解析 PDF 文字...", 10);
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdfDoc = await loadingTask.promise;
+                
+                let rawText = "";
+                const totalPages = pdfDoc.numPages;
+
+                for (let i = 1; i <= totalPages; i++) {
+                    const page = await pdfDoc.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(" ");
+                    rawText += `\n[Page ${i}]\n` + pageText;
+                    updateStatus(`正在解析 PDF 頁面 (${i}/${totalPages})...`, Math.floor(10 + (i / totalPages) * 20));
+                }
+
+                // Clean & Chunk text
+                const cleanedText = cleanPDFText(rawText);
+                AppState.pdfTextChunks = chunkText(cleanedText, 2800);
+
+                updateStatus(`PDF 解析完成！共 ${totalPages} 頁，切分為 ${AppState.pdfTextChunks.length} 個區塊。`, 30);
+                document.getElementById('startProcessBtn').removeAttribute('disabled');
+            } catch (err) {
+                console.error(err);
+                updateStatus("PDF 解析失敗：" + err.message, 0);
+                alert("PDF 解析失敗：" + err.message);
+            }
+        }
+
+        function cleanPDFText(rawText) {
+            // Remove repetitive headers/footers & fix hard line breaks
+            let cleaned = rawText.replace(/\[Page \d+\]/g, '');
+            // Merge hard line breaks in sentences (lowercase letter or comma followed by newline)
+            cleaned = cleaned.replace(/([a-z,;])\s*\n\s*([a-z])/g, '$1 $2');
+            // Remove excessive whitespace
+            cleaned = cleaned.replace(/\s+/g, ' ');
+            return cleaned.trim();
+        }
+
+        function chunkText(text, maxCharLen = 3000) {
+            const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g) || [text];
+            let chunks = [];
+            let currentChunk = "";
+
+            for (const sentence of sentences) {
+                if ((currentChunk + sentence).length > maxCharLen) {
+                    if (currentChunk.trim()) chunks.push(currentChunk.trim());
+                    currentChunk = sentence;
+                } else {
+                    currentChunk += sentence;
+                }
+            }
+            if (currentChunk.trim()) {
+                chunks.push(currentChunk.trim());
+            }
+            if (chunks.length === 0) {
+                chunks.push(text);
+            }
+            return chunks;
+        }
+
+
+        // === [SECTION 4: UI RENDER & ROUTING] ===
+        function updateStatus(text, percent) {
+            document.getElementById('statusText').textContent = text;
+            document.getElementById('progressPercent').textContent = `${percent}%`;
+            document.getElementById('progressBar').style.width = `${percent}%`;
+        }
+
+        async function runPipeline() {
+            if (AppState.isProcessing) return;
+            AppState.isProcessing = true;
+            document.getElementById('startProcessBtn').setAttribute('disabled', 'true');
+            AppState.translatedSections = [];
+
+            try {
+                // STEP 1: Generate Structured Highlights
+                updateStatus("正在生成五段式重點導讀...", 35);
+                const firstFewChunks = AppState.pdfTextChunks.slice(0, 3).join("\n\n");
+                
+                const highlightsSystemPrompt = `你是一個頂尖的學術論文導讀專家。請根據使用者提供的英文論文內容，以「繁體中文」輸出精準、專業的五段式結構化重點導讀 Markdown 格式：
+1. **一句話核心貢獻**
+2. **研究背景與解決的痛點**
+3. **核心方法與實驗設計**
+4. **關鍵實驗數據與結果**
+5. **研究限制與未來方向**
+請使用 Markdown 標題與條列整理，語氣嚴謹專業。`;
+
+                AppState.highlightsMarkdown = await callGeminiAPI(highlightsSystemPrompt, firstFewChunks);
+                renderHighlights();
+                updateStatus("重點導讀完成，開始進行逐段雙語翻譯...", 50);
+
+                // STEP 2: Paragraph by Paragraph Translation Queue
+                const totalChunks = AppState.pdfTextChunks.length;
+                const translationContainer = document.getElementById('translationContainer');
+                translationContainer.innerHTML = ''; // Clear previous
+
+                for (let idx = 0; idx < totalChunks; idx++) {
+                    const chunk = AppState.pdfTextChunks[idx];
+                    const translationSystemPrompt = `你是一位專業的學術論文中英翻譯專家。請將以下英文論文片段翻譯成流暢、精確的「繁體中文（台灣學術用語習慣）」。
+強制規則：
+1. 專有名詞首次出現時，必須保留英文原文括號註記，格式為：中文譯名 (English Term, 縮寫)。
+2. 完整保留原文的 LaTeX 數學公式（$ ... $ / $$ ... $$）、Markdown 表格與程式碼區塊。
+3. 嚴禁簡體字，專注於學術嚴謹性。`;
+
+                    const translatedText = await callGeminiAPI(translationSystemPrompt, chunk);
+                    AppState.translatedSections.push({ original: chunk, translated: translatedText });
+                    
+                    // Render current section live
+                    appendTranslationSection(chunk, translatedText, idx);
+
+                    const progress = Math.floor(50 + ((idx + 1) / totalChunks) * 50);
+                    updateStatus(`正在翻譯論文段落 (${idx + 1}/${totalChunks})...`, progress);
+                }
+
+                updateStatus("論文導讀與全篇翻譯全部完成！", 100);
+            } catch (err) {
+                console.error(err);
+                updateStatus("執行發生錯誤：" + err.message, 0);
+                alert("錯誤：" + err.message);
+            } finally {
+                AppState.isProcessing = false;
+                document.getElementById('startProcessBtn').removeAttribute('disabled');
+            }
+        }
+
+        function renderHighlights() {
+            const container = document.getElementById('highlightsContent');
+            container.innerHTML = marked.parse(AppState.highlightsMarkdown);
+            renderMathInElement(container, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+        }
+
+        function appendTranslationSection(original, translated, index) {
+            const container = document.getElementById('translationContainer');
+            const sectionDiv = document.createElement('div');
+            sectionDiv.className = "p-4 rounded-lg bg-[#121212] border border-[#2E2E2E] space-y-3 translation-item";
+            sectionDiv.dataset.index = index;
+
+            const translatedHtml = marked.parse(translated);
+            
+            sectionDiv.innerHTML = `
+                <div class="flex items-center justify-between text-xs text-[#71717A] border-b border-[#2E2E2E] pb-2">
+                    <span class="font-mono">Section #${index + 1}</span>
+                    <span>AI Academic Translation</span>
+                </div>
+                <div class="translated-content text-[#E4E4E7] space-y-2">
+                    ${translatedHtml}
+                </div>
+                <div class="original-container text-[#A1A1AA] text-xs pt-3 border-t border-[#2E2E2E]/50 ${AppState.readingMode === 'bilingual' ? '' : 'hidden'}">
+                    <p class="font-bold text-[#71717A] mb-1">英文原文:</p>
+                    <p class="font-serif leading-relaxed">${escapeHtml(original)}</p>
+                </div>
+            `;
+
+            container.appendChild(sectionDiv);
+
+            // Trigger KaTeX rendering on the newly added section
+            renderMathInElement(sectionDiv, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+        }
+
+        function setReadingMode(mode) {
+            AppState.readingMode = mode;
+            const btnBi = document.getElementById('modeBtnBilingual');
+            const btnMono = document.getElementById('modeBtnMonolingual');
+
+            if (mode === 'bilingual') {
+                btnBi.className = "px-3 py-1 text-xs font-medium rounded-md bg-blue-600 text-white transition cursor-pointer";
+                btnMono.className = "px-3 py-1 text-xs font-medium rounded-md text-[#A1A1AA] hover:text-white transition cursor-pointer";
+                document.querySelectorAll('.original-container').forEach(el => el.classList.remove('hidden'));
+            } else {
+                btnMono.className = "px-3 py-1 text-xs font-medium rounded-md bg-blue-600 text-white transition cursor-pointer";
+                btnBi.className = "px-3 py-1 text-xs font-medium rounded-md text-[#A1A1AA] hover:text-white transition cursor-pointer";
+                document.querySelectorAll('.original-container').forEach(el => el.classList.add('hidden'));
+            }
+        }
+
+        function copyHighlights() {
+            if (!AppState.highlightsMarkdown) {
+                alert("目前沒有可複製的重點內容。");
+                return;
+            }
+            navigator.clipboard.writeText(AppState.highlightsMarkdown).then(() => {
+                alert("已成功複製五段式重點導讀到剪貼簿！");
+            }).catch(err => {
+                alert("複製失敗：" + err);
+            });
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(>g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
